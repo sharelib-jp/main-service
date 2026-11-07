@@ -1,0 +1,10 @@
+/api/config.toml
+*.db
+*.db-*
+.env
+*.pem
+*.key
+*.test
+
+/api/generated/
+/generated/

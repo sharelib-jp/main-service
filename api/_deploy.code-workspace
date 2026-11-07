@@ -1,0 +1,20 @@
+{
+	"folders": [
+		{
+			"name": "_deploy",
+			"path": "../../_deploy"
+		},
+		{
+			"name": "auth-service",
+			"path": "../../auth-service"
+		},
+		{
+			"name": "repository-service",
+			"path": "../../repository-service"
+		},
+		{
+			"path": ".."
+		}
+	],
+	"settings": {}
+}
