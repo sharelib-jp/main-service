@@ -224,6 +224,190 @@ templ BookPage(s Site, b catalog.Book, generatedAt time.Time) {
 	}
 }
 
+templ BookList(books []catalog.Book) {
+	<ul class="book-list">
+		for _, b := range books {
+			<li>
+				<article>
+					<h3>
+						<a href={ templ.SafeURL(BookURL(b.ID)) }>
+							{ b.Title }
+							if HasText(b.Volume) {
+								<span>{ b.Volume }</span>
+							}
+						</a>
+					</h3>
+					if HasText(AuthorText(b.Bibliography)) {
+						<p>{ AuthorText(b.Bibliography) }</p>
+					}
+					<p class="muted">{ BookMetadata(b) }</p>
+				</article>
+			</li>
+		}
+	</ul>
+}
+
+templ AuthorityPage(s Site, kind string, a catalog.Authority, books []catalog.Book, page, pages int, total int64) {
+	@Layout(s, a.Title, AuthorityURL(kind, a.ID, page)) {
+		<nav aria-label="パンくず">
+			<a href="/">目録</a><span aria-hidden="true">/ </span>
+			<span>
+				if kind == "author" {
+					著者目録
+				} else {
+					出版社目録
+				}
+			</span>
+		</nav>
+		<article>
+			<p class="eyebrow">
+				if kind == "author" {
+					著者目録
+				} else {
+					出版社目録
+				}
+			</p>
+			<h1>{ a.Title }</h1>
+			if HasText(a.Transcription) {
+				<p class="muted">{ a.Transcription }</p>
+			}
+			<p class="muted identifier">典拠ID <code>{ a.ID }</code></p>
+			if len(a.AlternativeTitles)>0 || HasText(a.BirthDate) || HasText(a.FoundationDate) {
+				<section>
+					<h2>典拠情報</h2>
+					<dl class="authority-details">
+						if len(a.AlternativeTitles)>0 {
+							<dt>別名</dt>
+							<dd>
+								<ul class="plain-list">
+									for _, alias := range a.AlternativeTitles {
+										<li>
+											{ alias.Title }
+											if HasText(alias.Transcription) {
+												<small class="reading">{ alias.Transcription }</small>
+											}
+										</li>
+									}
+								</ul>
+							</dd>
+						}
+						if HasText(a.BirthDate) {
+							<dt>生年月日</dt>
+							<dd>{ a.BirthDate }</dd>
+						}
+						if HasText(a.FoundationDate) {
+							<dt>設立年月日</dt>
+							<dd>{ a.FoundationDate }</dd>
+						}
+					</dl>
+				</section>
+			}
+			<section>
+				<h2>関連する書誌 <span class="count">{ fmt.Sprint(total) }件</span></h2>
+				<p><a href={ templ.SafeURL(authoritySearch(kind, a.ID)) }>この典拠で検索・並び替え</a></p>
+				if len(books)==0 {
+					<p>関連する書誌情報は登録されていません。</p>
+				} else {
+					@BookList(books)
+				}
+				if pages>1 {
+					<nav aria-label="目録のページ">
+						<ul class="pagination">
+							if page>1 {
+								<li><a rel="prev" href={ templ.SafeURL(AuthorityURL(kind, a.ID, page-1)) }>前へ</a></li>
+							}
+							<li><span aria-current="page">{ fmt.Sprintf("%d / %d",page,pages) }</span></li>
+							if page<pages {
+								<li><a rel="next" href={ templ.SafeURL(AuthorityURL(kind, a.ID, page+1)) }>次へ</a></li>
+							}
+						</ul>
+					</nav>
+				}
+			</section>
+			if len(References(a.References)) > 0 {
+				<section><h2>参照情報</h2>@ReferenceTable(a.References)</section>
+			}
+			<section aria-labelledby="share-title">
+				<h2 id="share-title">共有</h2>
+				@CopyField("page-url", "ページの URL", s.Canonical(AuthorityURL(kind, a.ID, page)), "URL をコピー", 2)
+			</section>
+		</article>
+	}
+}
+
+func authoritySearch(kind, id string) string {
+	o := catalog.SearchOptions{}
+	if kind == "author" {
+		o.AuthorID = id
+	} else {
+		o.PublisherID = id
+	}
+	return SearchURL(o, 1)
+}
+
+templ SearchPage(s Site, v SearchView) {
+	@Layout(s, "書誌を検索", SearchURL(v.Options, v.Options.Page)) {
+		<h1>書誌を検索</h1>
+		<form class="search-form" action="/search" method="get" hx-get="/ajax/search" hx-target="#search-results" hx-swap="outerHTML" hx-indicator="#search-loading" hx-sync="this:replace">
+			<label for="query">キーワード</label>
+			<div class="search-input"><input id="query" type="search" name="q" value={ v.Options.Query } placeholder="タイトル・ヨミ・著者・出版社・ISBN・管理コード"/><button type="submit">検索</button></div>
+			if v.Options.AuthorID!="" {
+				<input type="hidden" name="authorId" value={ v.Options.AuthorID }/>
+				<p class="filter">著者：{ v.Author } <a href={ templ.SafeURL(clearFilter(v.Options, "authorId")) }>解除</a></p>
+			}
+			if v.Options.PublisherID!="" {
+				<input type="hidden" name="publisherId" value={ v.Options.PublisherID }/>
+				<p class="filter">出版社：{ v.Publisher } <a href={ templ.SafeURL(clearFilter(v.Options, "publisherId")) }>解除</a></p>
+			}
+			<div class="sort-field">
+				<label for="sort">並び順</label>
+				<select id="sort" name="sort">
+					<option value="updated" selected?={ v.Options.Sort=="updated" || v.Options.Sort=="" }>更新日が新しい順</option>
+					<option value="title" selected?={ v.Options.Sort=="title" }>タイトル順</option>
+					<option value="published" selected?={ v.Options.Sort=="published" }>出版日が新しい順</option>
+				</select>
+			</div>
+			<p id="search-loading" class="htmx-indicator" role="status">検索しています…</p>
+		</form>
+		@SearchResults(v)
+	}
+}
+
+func clearFilter(o catalog.SearchOptions, key string) string {
+	if key == "authorId" {
+		o.AuthorID = ""
+	} else {
+		o.PublisherID = ""
+	}
+	return SearchURL(o, 1)
+}
+
+templ SearchResults(v SearchView) {
+	<section id="search-results" aria-live="polite" aria-atomic="true" tabindex="-1">
+		<h2>検索結果 <span class="count">{ fmt.Sprint(v.Page.Total) }件</span></h2>
+		if len(v.Page.Items)==0 {
+			<p>該当する書誌情報はありません。検索語や絞り込み条件を変えてお試しください。</p>
+		} else {
+			@BookList(v.Page.Items)
+		}
+		if v.Pages()>1 {
+			<nav aria-label="検索結果のページ">
+				<ul class="pagination">
+					if v.Page.Page>1 {
+						<li><a rel="prev" href={ templ.SafeURL(SearchURL(v.Options, v.Page.Page-1)) } hx-get={ "/ajax/search?" + pageQuery(v.Options, v.Page.Page-1) } hx-target="#search-results" hx-swap="outerHTML" hx-sync="closest main:replace">前へ</a></li>
+					}
+					<li><span aria-current="page">{ fmt.Sprintf("%d / %d",v.Page.Page,v.Pages()) }</span></li>
+					if v.Page.Page<v.Pages() {
+						<li><a rel="next" href={ templ.SafeURL(SearchURL(v.Options, v.Page.Page+1)) } hx-get={ "/ajax/search?" + pageQuery(v.Options, v.Page.Page+1) } hx-target="#search-results" hx-swap="outerHTML" hx-sync="closest main:replace">次へ</a></li>
+					}
+				</ul>
+			</nav>
+		}
+	</section>
+}
+
+func pageQuery(o catalog.SearchOptions, page int) string { o.Page = page; return o.Values().Encode() }
+
 templ ErrorContent(title, message string) {
 	<section id="search-results" role="alert" tabindex="-1"><h2>{ title }</h2><p>{ message }</p><p><a href="/search">検索画面へ</a></p></section>
 }

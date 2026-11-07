@@ -69,5 +69,11 @@ func TestMissingFieldsAndEscapingInPages(t *testing.T) {
 			t.Errorf("missing content %q", present)
 		}
 	}
-
+	out.Reset()
+	if err := BookList([]catalog.Book{b}).Render(context.Background(), &out); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(out.String(), "—") || strings.Contains(out.String(), " · ") {
+		t.Fatal("empty list metadata has placeholders or separators")
+	}
 }
