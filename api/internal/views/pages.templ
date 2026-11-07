@@ -1,0 +1,83 @@
+package views
+
+templ Layout(s Site, title string, path string) {
+	<!DOCTYPE html>
+	<html lang="ja">
+		<head>
+			<meta charset="UTF-8"/>
+			<meta name="viewport" content="width=device-width, initial-scale=1"/>
+			<title>{ title } — { s.Name }</title>
+			<link rel="canonical" href={ templ.SafeURL(s.Canonical(path)) }/>
+			<link rel="stylesheet" href={ templ.SafeURL(Asset("style.css")) }/>
+			<meta name="htmx-config" content='{"historyRestoreAsHxRequest":false,"includeIndicatorStyles":false,"allowEval":false,"allowScriptTags":false,"responseHandling":[{"code":"204","swap":false},{"code":"[23]..","swap":true},{"code":"[45]..","swap":true,"error":true}]}'/>
+			<script src={ templ.SafeURL(Asset("htmx.min.js")) } defer></script>
+			<script src={ templ.SafeURL(Asset("copy.js")) } defer></script>
+		</head>
+		<body>
+			<a class="skip-link" href="#main">本文へ移動</a>
+			<header class="site-header">
+				<a class="site-name" href="/">{ s.Name }</a>
+				<form action="/search" method="get" role="search" class="header-search">
+					<label class="visually-hidden" for="site-query">蔵書を検索</label>
+					<input id="site-query" type="search" name="q" placeholder="タイトル・著者・ISBN など"/>
+					<button type="submit">検索</button>
+				</form>
+			</header>
+			<main id="main">
+				{ children... }
+			</main>
+			<footer><p>{ s.Name } の書誌・蔵書目録</p></footer>
+		</body>
+	</html>
+}
+
+templ Home(s Site) {
+	@Layout(s, "蔵書を探す", "/") {
+		<section class="home-intro">
+			<p class="eyebrow">図書館の目録</p>
+			<h1>次に読む一冊を、探す。</h1>
+			<p>タイトル、著者、出版社、ISBN、蔵書の管理コードから検索できます。</p>
+			<p><a class="button" href="/search">すべての書誌情報を見る</a></p>
+		</section>
+	}
+}
+
+templ Detail(label, value string) {
+	if HasText(value) {
+		<tr><th scope="row">{ label }</th><td>{ value }</td></tr>
+	}
+}
+
+templ ReferenceTable(values map[string]any) {
+	if len(References(values)) > 0 {
+		<table>
+			<caption class="visually-hidden">参照識別子と参照先</caption>
+			<tbody>
+				for _, r := range References(values) {
+					<tr>
+						<th scope="row">{ r.Key }</th>
+						<td>
+							if r.URL != "" {
+								<a href={ templ.URL(r.URL) } rel="noreferrer">{ r.Text }<img class="external-icon" src={ templ.SafeURL(Asset("external.svg")) } alt="" aria-hidden="true" width="16" height="16"/><span class="visually-hidden">（外部サイト）</span></a>
+							} else {
+								{ r.Text }
+							}
+						</td>
+					</tr>
+				}
+			</tbody>
+		</table>
+	}
+}
+
+templ ErrorContent(title, message string) {
+	<section id="search-results" role="alert" tabindex="-1"><h2>{ title }</h2><p>{ message }</p><p><a href="/search">検索画面へ</a></p></section>
+}
+
+templ ErrorPage(s Site, path, title, message string) {
+	@Layout(s, title, path) {
+		<h1>{ title }</h1>
+		<p>{ message }</p>
+		<p><a href="/search">検索画面へ</a></p>
+	}
+}
