@@ -1,5 +1,12 @@
 package views
 
+import (
+	"fmt"
+	"time"
+
+	"github.com/sharelib-jp/main-service/internal/catalog"
+)
+
 templ Layout(s Site, title string, path string) {
 	<!DOCTYPE html>
 	<html lang="ja">
@@ -67,6 +74,153 @@ templ ReferenceTable(values map[string]any) {
 				}
 			</tbody>
 		</table>
+	}
+}
+
+templ CopyField(id, label, text, buttonLabel string, rows int) {
+	<div class="copy-field">
+		<label for={ id }>{ label }</label>
+		<textarea id={ id } readonly rows={ fmt.Sprint(rows) } spellcheck="false" aria-describedby={ id + "-status" }>{ text }</textarea>
+		<div class="copy-actions">
+			<button type="button" hidden data-copy-target={ id } data-copy-status={ id + "-status" } data-copy-label={ label }>{ buttonLabel }</button>
+			<span id={ id + "-status" } class="copy-status" role="status" aria-live="polite" aria-atomic="true"></span>
+		</div>
+	</div>
+}
+
+templ RecordDates(b catalog.Book, generatedAt time.Time) {
+	if (b.CreatedAt != nil && !b.CreatedAt.IsZero()) || !b.UpdatedAt.IsZero() || !generatedAt.IsZero() {
+		<footer class="record-footer" aria-label="書誌とページの日時">
+			<dl class="record-dates">
+				if b.CreatedAt != nil && !b.CreatedAt.IsZero() {
+					<div><dt>書誌情報作成日時</dt><dd><time datetime={ TimestampValue(*b.CreatedAt) }>{ Timestamp(*b.CreatedAt) }</time></dd></div>
+				}
+				if !b.UpdatedAt.IsZero() {
+					<div><dt>書誌情報最終更新日時</dt><dd><time datetime={ TimestampValue(b.UpdatedAt) }>{ Timestamp(b.UpdatedAt) }</time></dd></div>
+				}
+				if !generatedAt.IsZero() {
+					<div><dt>このページの生成日時</dt><dd><time datetime={ TimestampValue(generatedAt) }>{ Timestamp(generatedAt) }</time></dd></div>
+				}
+			</dl>
+		</footer>
+	}
+}
+
+templ BookPage(s Site, b catalog.Book, generatedAt time.Time) {
+	@Layout(s, b.Title, BookURL(b.ID)) {
+		<nav aria-label="パンくず"><a href="/">目録</a><span aria-hidden="true">/ </span><span>書誌情報</span></nav>
+		<article>
+			<div class="book-heading">
+				<div>
+					<p class="eyebrow">書誌情報</p>
+					<h1>
+						{ b.Title }
+						if HasText(b.Volume) {
+							<span class="volume">{ b.Volume }</span>
+						}
+					</h1>
+					<p class="muted identifier">書誌ID <code>{ b.ID }</code></p>
+					if Other(b.Bibliography,"description") != "" {
+						<section aria-label="要約"><h2>要約</h2><p class="preserve-lines">{ Other(b.Bibliography,"description") }</p></section>
+					}
+				</div>
+				<img class="book-cover" src={ templ.SafeURL(Asset("no-image.svg")) } alt="書影はありません" width="160" height="240"/>
+			</div>
+			if len(Summary(b.Bibliography)) > 0 {
+				<section aria-labelledby="summary-title">
+					<h2 id="summary-title">資料情報</h2>
+					<dl class="catalog-summary">
+						for _, field := range Summary(b.Bibliography) {
+							<div><dt><span>{ field.Label }</span><img class="summary-icon" src={ templ.SafeURL(Asset(field.Icon)) } alt="" aria-hidden="true" width="32" height="32"/></dt><dd>{ field.Value }</dd></div>
+						}
+					</dl>
+				</section>
+			}
+			<section aria-labelledby="details-title">
+				<h2 id="details-title">資料詳細</h2>
+				<table>
+					<caption class="visually-hidden">書誌の詳細情報</caption>
+					<tbody>
+						@Detail("タイトル", b.Title)
+						@Detail("タイトル（ヨミ）", b.TitleTranscription)
+						@Detail("巻次", b.Volume)
+						if HasText(AuthorText(b.Bibliography)) {
+							<tr>
+								<th scope="row">著者</th>
+								<td>
+									if len(b.Authors) > 0 {
+										<ul class="plain-list">
+											for _, a := range b.Authors {
+												<li>
+													<a href={ templ.SafeURL(AuthorityURL("author", a.Authority.ID, 1)) }>{ a.Authority.Title }</a>
+													if HasText(a.Role) {
+														<span class="muted">（{ a.Role }）</span>
+													}
+													if HasText(a.Authority.Transcription) {
+														<small class="reading">{ a.Authority.Transcription }</small>
+													}
+												</li>
+											}
+										</ul>
+									} else {
+										{ b.AuthorSummary }
+									}
+								</td>
+							</tr>
+						}
+						@Detail("著者表示（ヨミ）", b.AuthorSummaryTranscription)
+						if HasText(PublisherText(b.Bibliography)) {
+							<tr>
+								<th scope="row">出版社</th>
+								<td>
+									if b.Publisher != nil && HasText(b.Publisher.Title) {
+										<a href={ templ.SafeURL(AuthorityURL("publisher", b.Publisher.ID, 1)) }>{ b.Publisher.Title }</a>
+									} else {
+										{ b.PublisherSummary }
+									}
+								</td>
+							</tr>
+						}
+						@Detail("出版社（ヨミ）", b.PublisherSummaryTranscription)
+						@Detail("出版年月日", b.FirstPublishDate)
+						@Detail("分類（NDC）", b.NDC)
+						@Detail("NDC の版", b.NDCEdition)
+						@Detail("言語", b.Language)
+						@Detail("形態", Other(b.Bibliography, "extent"))
+						@Detail("価格", Other(b.Bibliography, "price"))
+					</tbody>
+				</table>
+			</section>
+			<section aria-labelledby="copies-title">
+				<h2 id="copies-title">蔵書情報 <span class="count">{ fmt.Sprint(len(b.Copies)) }冊</span></h2>
+				if len(b.Copies) == 0 {
+					<p>この書誌には蔵書が登録されていません。</p>
+				} else {
+					<div class="table-scroll">
+						<table>
+							<caption class="visually-hidden">この書誌に紐づく蔵書</caption>
+							<thead><tr><th scope="col">管理コード</th><th scope="col">状態</th><th scope="col">貸出規則</th></tr></thead>
+							<tbody>
+								for _, c := range b.Copies {
+									<tr id={ "copy-" + c.ID }><th scope="row"><a href={ templ.SafeURL(CopyURL(c.ManagementCode)) }>{ c.ManagementCode }</a></th><td>{ Condition(c.Condition) }</td><td>{ LoanPolicy(c.LoanPolicy) }</td></tr>
+								}
+							</tbody>
+						</table>
+					</div>
+					<p class="muted">貸出規則を掲載しています。現在の貸出状況は表示していません。</p>
+				}
+			</section>
+			if len(References(b.Reference)) > 0 {
+				<section aria-labelledby="references-title"><h2 id="references-title">参照情報</h2>@ReferenceTable(b.Reference)</section>
+			}
+			<section aria-labelledby="share-title">
+				<h2 id="share-title">引用・共有</h2>
+				@CopyField("citation-text", "引用文", Citation(s, b.Bibliography), "引用文をコピー", 4)
+				@CopyField("page-url", "ページの URL", s.Canonical(BookURL(b.ID)), "URL をコピー", 2)
+			</section>
+			<section aria-labelledby="export-title"><h2 id="export-title">書誌情報の取得</h2><p><a href={ templ.SafeURL(JSONURL(b.ID)) } download={ b.ID + ".json" }>JSON 形式で取得</a></p></section>
+			@RecordDates(b, generatedAt)
+		</article>
 	}
 }
 
