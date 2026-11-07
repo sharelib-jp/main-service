@@ -1,0 +1,11 @@
+.git
+sample
+web
+api/config.toml
+api/generated
+**/*.db
+**/*.db-*
+**/*.pem
+**/*.key
+.env
+**/.env
